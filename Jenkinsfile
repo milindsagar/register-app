@@ -16,7 +16,7 @@ pipeline {
         stage("Cleanup Workspace & Disk Space") {
             steps {
                 cleanWs()
-                // Disk full cha issue avoid karnya sathi
+                // Disk space चा प्रश्न टाळण्यासाठी Unused Docker resources आणि Trivy cache clear करणे
                 sh 'docker system prune -af --volumes || true'
                 sh 'rm -rf ~/.cache/trivy || true'
             }
@@ -61,7 +61,6 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    // Jenkins context madhil credentials use karnya sathi
                     withCredentials([usernamePassword(credentialsId: DOCKER_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
                         sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
                         sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
