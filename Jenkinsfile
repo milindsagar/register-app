@@ -7,10 +7,10 @@ pipeline {
     }
 
     environment {
-        // Docker Image details आणि Credentials चा वापर
         IMAGE_NAME  = 'sagardaw/register-app-pipeline'
         IMAGE_TAG   = "${BUILD_NUMBER}"
-        DOCKER_PASS = 'docker-credentials-id' // Jenkins मधील Dockerhub Credentials ID
+        // Jenkins Credentials Store मधील अचूक Credential ID इथे वापरा (उदा. 'dockerhub')
+        DOCKER_CRED = 'dockerhub' 
     }
 
     stages {
@@ -41,7 +41,6 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
-                    // Jenkins Global Configuration मधील Sonar Server चे नाव
                     withSonarQubeEnv('sonarqube-server') {
                         sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar'
                     }
@@ -52,7 +51,6 @@ pipeline {
         stage("Quality Gate") {
             steps {
                 script {
-                    // waitForQualityGate ला credentialsId लागत नाही
                     waitForQualityGate abortPipeline: false
                 }
             }
@@ -61,7 +59,8 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    docker.withRegistry('', DOCKER_PASS) {
+                    // Docker Hub चा Official Registry URL आणि Jenkins Credential ID
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKER_CRED) {
                         def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
                         docker_image.push("${IMAGE_TAG}")
                         docker_image.push('latest')
