@@ -7,10 +7,10 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME  = 'sagardaw/register-app-pipeline'
-        IMAGE_TAG   = "${BUILD_NUMBER}"
-        // Jenkins Credentials Store मधील अचूक Credential ID इथे वापरा (उदा. 'dockerhub')
-        DOCKER_CRED = 'dockerhub' 
+        IMAGE_NAME        = 'sagardaw/register-app-pipeline'
+        IMAGE_TAG         = "${BUILD_NUMBER}"
+        DOCKER_CRED       = 'dockerhub' 
+        JENKINS_API_TOKEN = 'your-jenkins-api-token-here' // इथे तुमचा Jenkins API Token टाका
     }
 
     stages {
@@ -59,7 +59,6 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    // Docker Hub चा Official Registry URL आणि Jenkins Credential ID
                     docker.withRegistry('https://index.docker.io/v1/', DOCKER_CRED) {
                         def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
                         docker_image.push("${IMAGE_TAG}")
@@ -82,6 +81,14 @@ pipeline {
                 script {
                     sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
                     sh "docker rmi ${IMAGE_NAME}:latest || true"
+                }
+            }
+        }
+
+        stage("Trigger CD Pipeline") {
+            steps {
+                script {
+                    sh "curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST -H 'cache-control: no-cache' -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://ec2-13-232-128-192.ap-south-1.compute.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'"
                 }
             }
         }
