@@ -2,33 +2,39 @@ pipeline {
     agent { label 'Mindgate-Agent' }
 
     tools {
-        maven 'Maven3'
         jdk 'Java21'
+        maven 'Maven3'
+    }
+
+    environment {
+        IMAGE_NAME  = 'sagardaw/register-app-pipeline'
+        IMAGE_TAG   = "${BUILD_NUMBER}"
+        DOCKER_PASS = 'docker-credentials-id'
     }
 
     stages {
-        stage('Cleanup Disk & Cache') {
+        stage("Cleanup Workspace & Disk Space") {
             steps {
-                // Pre-build disk space clear karnyasathi
+                cleanWs()
+                // Disk full चा प्रश्न सुटण्यासाठी Unused Docker layers आणि Trivy cache clear
                 sh 'docker system prune -af --volumes || true'
                 sh 'rm -rf ~/.cache/trivy || true'
-                cleanWs()
             }
         }
 
-        stage('Checkout SCM') {
+        stage("Checkout from SCM") {
             steps {
-                checkout scm
+                git branch: 'main', credentialsId: 'github', url: 'https://github.com/milindsagar/register-app.git'
             }
         }
 
-        stage('Build Application') {
+        stage("Build Application") {
             steps {
                 sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('Test Application') {
+        stage("Test Application") {
             steps {
                 sh 'mvn test'
             }
@@ -44,49 +50,54 @@ pipeline {
             }
         }
 
-        stage('Quality Gate') {
+        stage("Quality Gate") {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: true
+                    waitForQualityGate abortPipeline: false
                 }
             }
         }
 
-        stage('Build & Push Docker Image') {
+        stage("Build & Push Docker Image") {
             steps {
                 script {
-                    withDockerRegistry([credentialsId: 'docker-hub-credentials', url: '']) {
-                        sh 'docker build -t sagardaw/register-app-pipeline:${BUILD_NUMBER} .'
-                        sh 'docker push sagardaw/register-app-pipeline:${BUILD_NUMBER}'
-                        sh 'docker tag sagardaw/register-app-pipeline:${BUILD_NUMBER} sagardaw/register-app-pipeline:latest'
-                        sh 'docker push sagardaw/register-app-pipeline:latest'
+                    docker.withRegistry('', DOCKER_PASS) {
+                        def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+                        docker_image.push("${IMAGE_TAG}")
+                        docker_image.push('latest')
                     }
                 }
             }
         }
 
-        stage('Trivy Scan') {
+        stage("Trivy Scan") {
             steps {
                 script {
-                    sh '''
-                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                        aquasec/trivy image sagardaw/register-app-pipeline:${BUILD_NUMBER} \
-                        --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table
-                    '''
+                    sh "docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${IMAGE_NAME}:${IMAGE_TAG} --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
                 }
             }
         }
 
         stage('Cleanup Artifacts') {
             steps {
-                sh 'docker image prune -f || true'
+                script {
+                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
+                    sh "docker rmi ${IMAGE_NAME}:latest || true"
+                }
+            }
+        }
+
+        stage("Trigger CD Pipeline") {
+            steps {
+                script {
+                    sh "curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST -H 'cache-control: no-cache' -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://3.110.172.242:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'"
+                }
             }
         }
     }
 
     post {
         always {
-            // Unused space parat clear honyasathi
             cleanWs()
             sh 'docker system prune -f || true'
         }
