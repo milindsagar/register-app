@@ -2,39 +2,35 @@ pipeline {
     agent { label 'Mindgate-Agent' }
 
     tools {
-        jdk 'Java21'
-        maven 'Maven3'
-    }
-
-    environment {
-        IMAGE_NAME        = 'sagardaw/register-app-pipeline'
-        IMAGE_TAG         = "${BUILD_NUMBER}"
-        DOCKER_CRED       = 'dockerhub' 
-        JENKINS_API_TOKEN = 'your-jenkins-api-token-here' // इथे तुमचा Jenkins API Token टाका
+        maven 'Maven-3.9.6'
+        jdk 'JDK-21'
     }
 
     stages {
-        stage("Cleanup Workspace") {
+        stage('Cleanup Disk & Cache') {
             steps {
+                // Pre-build disk space clear karnyasathi
+                sh 'docker system prune -af --volumes || true'
+                sh 'rm -rf ~/.cache/trivy || true'
                 cleanWs()
             }
         }
 
-        stage("Checkout from SCM") {
+        stage('Checkout SCM') {
             steps {
-                git branch: 'main', credentialsId: 'github', url: 'https://github.com/milindsagar/register-app.git'
+                checkout scm
             }
         }
 
-        stage("Build Application") {
+        stage('Build Application') {
             steps {
-                sh "mvn clean package -DskipTests"
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage("Test Application") {
+        stage('Test Application') {
             steps {
-                sh "mvn test"
+                sh 'mvn test'
             }
         }
 
@@ -48,49 +44,51 @@ pipeline {
             }
         }
 
-        stage("Quality Gate") {
+        stage('Quality Gate') {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: false
+                    waitForQualityGate abortPipeline: true
                 }
             }
         }
 
-        stage("Build & Push Docker Image") {
+        stage('Build & Push Docker Image') {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', DOCKER_CRED) {
-                        def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
-                        docker_image.push("${IMAGE_TAG}")
-                        docker_image.push('latest')
+                    withDockerRegistry([credentialsId: 'docker-hub-credentials', url: '']) {
+                        sh 'docker build -t sagardaw/register-app-pipeline:${BUILD_NUMBER} .'
+                        sh 'docker push sagardaw/register-app-pipeline:${BUILD_NUMBER}'
+                        sh 'docker tag sagardaw/register-app-pipeline:${BUILD_NUMBER} sagardaw/register-app-pipeline:latest'
+                        sh 'docker push sagardaw/register-app-pipeline:latest'
                     }
                 }
             }
         }
 
-        stage("Trivy Scan") {
+        stage('Trivy Scan') {
             steps {
                 script {
-                    sh "docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${IMAGE_NAME}:${IMAGE_TAG} --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
+                    sh '''
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                        aquasec/trivy image sagardaw/register-app-pipeline:${BUILD_NUMBER} \
+                        --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table
+                    '''
                 }
             }
         }
 
         stage('Cleanup Artifacts') {
             steps {
-                script {
-                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
-                    sh "docker rmi ${IMAGE_NAME}:latest || true"
-                }
+                sh 'docker image prune -f || true'
             }
         }
+    }
 
-        stage("Trigger CD Pipeline") {
-            steps {
-                script {
-                    sh "curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST -H 'cache-control: no-cache' -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://ec2-3.110.172.242.ap-south-1.compute.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'"
-                }
-            }
+    post {
+        always {
+            // Unused space parat clear honyasathi
+            cleanWs()
+            sh 'docker system prune -f || true'
         }
     }
 }
