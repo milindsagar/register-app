@@ -7,12 +7,11 @@ pipeline {
     }
 
     environment {
-        APP_NAME          = "register-app-pipeline"
-        RELEASE           = "1.0.0"
-        DOCKER_USER       = "sagardaw"
-        DOCKER_PASS       = 'dockerhub'
-        IMAGE_NAME        = "${DOCKER_USER}/${APP_NAME}"
-        IMAGE_TAG         = "${RELEASE}-${BUILD_NUMBER}"
+        APP_NAME    = "register-app-pipeline"
+        RELEASE     = "1.0.0"
+        DOCKER_USER = "sagardaw"
+        IMAGE_NAME  = "${DOCKER_USER}/${APP_NAME}"
+        IMAGE_TAG   = "${RELEASE}-${BUILD_NUMBER}"
     }
 
     stages {
@@ -66,6 +65,14 @@ pipeline {
                         docker_image.push("${IMAGE_TAG}")
                         docker_image.push('latest')
                     }
+                }
+            }
+        }
+
+        stage("Trivy Scan") {
+            steps {
+                script {
+                    sh 'docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image sagardaw/register-app-pipeline:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table'
                 }
             }
         }
