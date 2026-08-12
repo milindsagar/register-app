@@ -1,9 +1,19 @@
 pipeline {
     agent { label 'Mindgate-Agent' }
-    
+
     tools {
         jdk 'Java21'
         maven 'Maven3'
+    }
+
+    environment {
+        APP_NAME          = "register-app-pipeline"
+        RELEASE           = "1.0.0"
+        DOCKER_USER       = "sagardaw"
+        DOCKER_PASS       = 'dockerhub'
+        IMAGE_NAME        = "${DOCKER_USER}/${APP_NAME}"
+        IMAGE_TAG         = "${RELEASE}-${BUILD_NUMBER}"
+        JENKINS_API_TOKEN = credentials('JENKINS_API_TOKEN')
     }
 
     stages {
@@ -45,6 +55,18 @@ pipeline {
             steps {
                 script {
                     waitForQualityGate abortPipeline: false, credentialsId: 'Mindgate-Token'
+                }
+            }
+        }
+
+        stage("Build & Push Docker Image") {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+                        def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+                        docker_image.push("${IMAGE_TAG}")
+                        docker_image.push('latest')
+                    }
                 }
             }
         }
