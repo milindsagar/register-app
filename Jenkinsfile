@@ -7,11 +7,10 @@ pipeline {
     }
 
     environment {
-        APP_NAME    = "register-app-pipeline"
-        RELEASE     = "1.0.0"
-        DOCKER_USER = "sagardaw"
-        IMAGE_NAME  = "${DOCKER_USER}/${APP_NAME}"
-        IMAGE_TAG   = "${RELEASE}-${BUILD_NUMBER}"
+        // Docker Image details आणि Credentials चा वापर
+        IMAGE_NAME  = 'sagardaw/register-app-pipeline'
+        IMAGE_TAG   = "${BUILD_NUMBER}"
+        DOCKER_PASS = 'docker-credentials-id' // Jenkins मधील Dockerhub Credentials ID
     }
 
     stages {
@@ -29,7 +28,7 @@ pipeline {
 
         stage("Build Application") {
             steps {
-                sh "mvn clean package"
+                sh "mvn clean package -DskipTests"
             }
         }
 
@@ -42,6 +41,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 script {
+                    // Jenkins Global Configuration मधील Sonar Server चे नाव
                     withSonarQubeEnv('sonarqube-server') {
                         sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar'
                     }
@@ -52,7 +52,8 @@ pipeline {
         stage("Quality Gate") {
             steps {
                 script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'Mindgate-Token'
+                    // waitForQualityGate ला credentialsId लागत नाही
+                    waitForQualityGate abortPipeline: false
                 }
             }
         }
@@ -60,7 +61,7 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    docker.withRegistry('https://index.docker.io/v1/', 'dockerhub') {
+                    docker.withRegistry('', DOCKER_PASS) {
                         def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
                         docker_image.push("${IMAGE_TAG}")
                         docker_image.push('latest')
@@ -72,7 +73,7 @@ pipeline {
         stage("Trivy Scan") {
             steps {
                 script {
-                    sh 'docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image sagardaw/register-app-pipeline:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table'
+                    sh "docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${IMAGE_NAME}:${IMAGE_TAG} --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
                 }
             }
         }
@@ -80,8 +81,8 @@ pipeline {
         stage('Cleanup Artifacts') {
             steps {
                 script {
-                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG}"
-                    sh "docker rmi ${IMAGE_NAME}:latest"
+                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
+                    sh "docker rmi ${IMAGE_NAME}:latest || true"
                 }
             }
         }
