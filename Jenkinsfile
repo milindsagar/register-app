@@ -5,17 +5,17 @@ pipeline {
         maven 'Maven3'
     }
     
-    stages{
+    stages {
         stage("Cleanup Workspace"){
-                steps {
+            steps {
                 cleanWs()
-                }
+            }
         }
 
         stage("Checkout from SCM"){
-                steps {
-                    git branch: 'main', credentialsId:'github', url: 'https://github.com/milindsagar/register-app.git'
-                }
+            steps {
+                git branch: 'main', credentialsId:'github', url: 'https://github.com/milindsagar/register-app.git'
+            }
         }
 
         stage("Build Application"){
@@ -23,16 +23,18 @@ pipeline {
                 sh "mvn clean package"
             }
         }
+
         stage("Test Application"){
             steps {
                 sh "mvn test"
             }
         }
+
         stage('SonarQube Analysis') {
             steps {
                 script {
                     withSonarQubeEnv(credentialsId: 'Mindgate-Token') {
-                        sh 'mvn sonar:sonar'
+                        sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar'
                     }
                 }
             }
