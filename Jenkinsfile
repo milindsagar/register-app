@@ -9,14 +9,14 @@ pipeline {
     environment {
         IMAGE_NAME  = 'sagardaw/register-app-pipeline'
         IMAGE_TAG   = "${BUILD_NUMBER}"
-        DOCKER_PASS = 'docker-credentials-id'
+        DOCKER_CRED = 'docker-credentials-id'
     }
 
     stages {
         stage("Cleanup Workspace & Disk Space") {
             steps {
                 cleanWs()
-                // Disk full चा प्रश्न सुटण्यासाठी Unused Docker layers आणि Trivy cache clear
+                // Disk full cha issue avoid karnya sathi
                 sh 'docker system prune -af --volumes || true'
                 sh 'rm -rf ~/.cache/trivy || true'
             }
@@ -61,10 +61,13 @@ pipeline {
         stage("Build & Push Docker Image") {
             steps {
                 script {
-                    docker.withRegistry('', DOCKER_PASS) {
-                        def docker_image = docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
-                        docker_image.push("${IMAGE_TAG}")
-                        docker_image.push('latest')
+                    // Jenkins context madhil credentials use karnya sathi
+                    withCredentials([usernamePassword(credentialsId: DOCKER_CRED, usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh 'docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .'
+                        sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
+                        sh 'docker push ${IMAGE_NAME}:${IMAGE_TAG}'
+                        sh 'docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest'
+                        sh 'docker push ${IMAGE_NAME}:latest'
                     }
                 }
             }
