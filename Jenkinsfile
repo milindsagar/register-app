@@ -1,7 +1,7 @@
 pipeline {
     agent { label 'Mindgate-Agent' }
     tools {
-        jdk 'Java21'
+        jdk 'Java17'
         maven 'Maven3'
     }
     
